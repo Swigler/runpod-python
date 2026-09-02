@@ -170,13 +170,13 @@ class TestStartProject(unittest.TestCase):
 
         mock_attempt_pod_launch.return_value = {
             "id": "new_pod_id",
-            "desiredStatus": "PENDING",
+            "status": "PROVISIONING",
             "runtime": None,
         }
 
         mock_get_pod.return_value = {
             "id": "new_pod_id",
-            "desiredStatus": "RUNNING",
+            "status": "RUNNING",
             "runtime": "ONLINE",
         }
 

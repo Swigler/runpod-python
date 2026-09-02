@@ -23,14 +23,14 @@ class TestPodCommands(unittest.TestCase):
             {
                 "id": "1",
                 "name": "Pod1",
-                "desiredStatus": "Running",
-                "imageName": "Image1",
+                "status": "RUNNING",
+                "image": "Image1",
             },
             {
                 "id": "2",
                 "name": "Pod2",
-                "desiredStatus": "Stopped",
-                "imageName": "Image2",
+                "status": "STOPPED",
+                "image": "Image2",
             },
         ]
 
@@ -40,8 +40,8 @@ class TestPodCommands(unittest.TestCase):
         # Create expected table
         assert result.exit_code == 0, result.exception
         expected_table = PrettyTable(["ID", "Name", "Status", "Image"])
-        expected_table.add_row(("1", "Pod1", "Running", "Image1"))
-        expected_table.add_row(("2", "Pod2", "Stopped", "Image2"))
+        expected_table.add_row(("1", "Pod1", "RUNNING", "Image1"))
+        expected_table.add_row(("2", "Pod2", "STOPPED", "Image2"))
 
         # Assert that click.echo was called with the correct table
         mock_echo.assert_called()

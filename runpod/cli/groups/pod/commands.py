@@ -25,7 +25,7 @@ def list_pods():
     """
     table = PrettyTable(["ID", "Name", "Status", "Image"])
     for pod in get_pods():
-        table.add_row((pod["id"], pod["name"], pod["desiredStatus"], pod["imageName"]))
+        table.add_row((pod["id"], pod["name"], pod["status"], pod["image"]))
 
     click.echo(table)
 

@@ -1,415 +1,430 @@
-""" Tests for ctl_commands.py """
+"""Tests for the API wrapper commands."""
 
-import unittest
 from unittest.mock import patch
 
+import pytest
+
 from runpod.api import ctl_commands
+from runpod.error import QueryError
 
 
-class TestCTL(unittest.TestCase):
-    """Tests for CTL Commands"""
+def test_get_user_uses_graphql():
+    with patch(
+        "runpod.api.ctl_commands.run_graphql_query",
+        return_value={"data": {"myself": {"id": "user"}}},
+    ) as request:
+        assert ctl_commands.get_user(api_key="key") == {"id": "user"}
 
-    def setUp(self):
-        """Set up test fixtures"""
-        import runpod
-        runpod.api_key = "MOCK_API_KEY"
+    request.assert_called_once_with(ctl_commands.user_queries.QUERY_USER, api_key="key")
 
-    def test_get_user(self):
-        """
-        Tests get_user
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "myself": {
-                        "id": "USER_ID",
-                    }
-                }
-            }
 
-            user = ctl_commands.get_user()
-            self.assertEqual(user["id"], "USER_ID")
-
-    def test_update_user_settings(self):
-        """
-        Tests update_user_settings
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "updateUserSettings": {"id": "USER_ID", "publicKey": "PUBLIC_KEY"}
-                }
-            }
-
-            user = ctl_commands.update_user_settings("PUBLIC_KEY")
-            self.assertEqual(user["id"], "USER_ID")
-            self.assertEqual(user["publicKey"], "PUBLIC_KEY")
-
-    def test_get_gpus(self):
-        """
-        Tests get_gpus
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "gpuTypes": [
-                        {
-                            "id": "NVIDIA A100 80GB PCIe",
-                            "displayName": "A100 80GB",
-                            "memoryInGb": 80,
-                        }
-                    ]
-                }
-            }
-
-            gpus = ctl_commands.get_gpus()
-
-            self.assertEqual(len(gpus), 1)
-            self.assertEqual(gpus[0]["id"], "NVIDIA A100 80GB PCIe")
-
-    def test_get_gpu(self):
-        """
-        Tests get_gpu_by_id
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "gpuTypes": [
-                        {
-                            "id": "NVIDIA A100 80GB PCIe",
-                            "displayName": "A100 80GB",
-                            "memoryInGb": 80,
-                        }
-                    ]
-                }
-            }
-
-            gpu = ctl_commands.get_gpu("NVIDIA A100 80GB PCIe")
-            self.assertEqual(gpu["id"], "NVIDIA A100 80GB PCIe")
-
-            patch_request.return_value.json.return_value = {"data": {"gpuTypes": []}}
-
-            with self.assertRaises(ValueError) as context:
-                gpu = ctl_commands.get_gpu("Not a GPU")
-
-            self.assertEqual(
-                str(context.exception),
-                "No GPU found with the specified ID, "
-                "run runpod.get_gpus() to get a list of all GPUs",
-            )
-
-    def test_create_pod(self):
-        """
-        Tests create_pod
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request, patch(
-            "runpod.api.ctl_commands.get_gpu"
-        ) as patch_get_gpu, patch("runpod.api.ctl_commands.get_user") as patch_get_user:
-            patch_request.return_value.json.return_value = {
-                "data": {"podFindAndDeployOnDemand": {"id": "POD_ID"}}
-            }
-
-            patch_get_gpu.return_value = None
-
-            patch_get_user.return_value = {
-                "networkVolumes": [
-                    {"id": "NETWORK_VOLUME_ID", "dataCenterId": "us-east-1"}
-                ]
-            }
-
-            pod = ctl_commands.create_pod(
-                name="POD_NAME",
-                image_name="IMAGE_NAME",
-                support_public_ip=False,
-                gpu_type_id="NVIDIA A100 80GB PCIe",
-                network_volume_id="NETWORK_VOLUME_ID",
-            )
-
-            self.assertEqual(pod["id"], "POD_ID")
-
-            with self.assertRaises(ValueError) as context:
-                pod = ctl_commands.create_pod(
-                    name="POD_NAME",
-                    cloud_type="NOT_A_CLOUD_TYPE",
-                    image_name="IMAGE_NAME",
-                    gpu_type_id="NVIDIA A100 80GB PCIe",
-                    network_volume_id="NETWORK_VOLUME_ID",
-                )
-
-            self.assertEqual(
-                str(context.exception),
-                "cloud_type must be one of ALL, COMMUNITY or SECURE",
-            )
-
-            with self.assertRaises(ValueError) as context:
-                pod = ctl_commands.create_pod(
-                    name="POD_NAME",
-                    gpu_type_id="NVIDIA A100 80GB PCIe",
-                    network_volume_id="NETWORK_VOLUME_ID",
-                )
-
-            self.assertEqual(
-                str(context.exception),
-                "Either image_name or template_id must be provided",
-            )
-
-    def test_stop_pod(self):
-        """
-        Test stop_pod
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {"podStop": {"id": "POD_ID"}}
-            }
-
-            pod = ctl_commands.stop_pod(pod_id="POD_ID")
-
-            self.assertEqual(pod["id"], "POD_ID")
-
-    def test_resume_pod(self):
-        """
-        Test resume_pod
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {"podResume": {"id": "POD_ID"}}
-            }
-
-            pod = ctl_commands.resume_pod(pod_id="POD_ID", gpu_count=1)
-
-            self.assertEqual(pod["id"], "POD_ID")
-
-    def test_terminate_pod(self):
-        """
-        Test terminate_pod
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {"podTerminate": {"id": "POD_ID"}}
-            }
-
-            self.assertIsNone(ctl_commands.terminate_pod(pod_id="POD_ID"))
-
-    def test_raised_error(self):
-        """
-        Test raised_error
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "errors": [{"message": "Error Message"}]
-            }
-
-            with self.assertRaises(Exception) as context:
-                ctl_commands.get_gpus()
-
-            self.assertEqual(str(context.exception), "Error Message")
-
-        # Test Unauthorized with status code 401
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.status_code = 401
-
-            with self.assertRaises(Exception) as context:
-                ctl_commands.get_gpus()
-
-            self.assertEqual(
-                str(context.exception),
-                "Unauthorized request, please check your API key.",
-            )
-
-    def test_get_pods(self):
-        """
-        Tests get_pods
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "myself": {
-                        "pods": [
-                            {
-                                "id": "POD_ID",
-                                "containerDiskInGb": 5,
-                                "costPerHr": 0.34,
-                                "desiredStatus": "RUNNING",
-                                "dockerArgs": None,
-                                "dockerId": None,
-                                "env": [],
-                                "gpuCount": 1,
-                                "imageName": "runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel",
-                                "lastStatusChange": "Rented by User: Tue Aug 15 2023",
-                                "machineId": "MACHINE_ID",
-                                "memoryInGb": 83,
-                                "name": "POD_NAME",
-                                "podType": "RESERVED",
-                                "port": None,
-                                "ports": "80/http",
-                                "uptimeSeconds": 0,
-                                "vcpuCount": 21,
-                                "volumeInGb": 200,
-                                "volumeMountPath": "/workspace",
-                                "machine": {"gpuDisplayName": "RTX 3090"},
-                            }
-                        ]
-                    }
-                }
-            }
-
-            pods = ctl_commands.get_pods()
-
-            self.assertEqual(len(pods), 1)
-            self.assertEqual(pods[0]["id"], "POD_ID")
-
-    def test_get_pod(self):
-        """
-        Tests get_pods
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "pod": {
-                        "id": "POD_ID",
-                        "containerDiskInGb": 5,
-                        "costPerHr": 0.34,
-                        "desiredStatus": "RUNNING",
-                        "dockerArgs": None,
-                        "dockerId": None,
-                        "env": [],
-                        "gpuCount": 1,
-                        "imageName": "runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel",
-                        "lastStatusChange": "Rented by User: Tue Aug 15 2023",
-                        "machineId": "MACHINE_ID",
-                        "memoryInGb": 83,
-                        "name": "POD_NAME",
-                        "podType": "RESERVED",
-                        "port": None,
-                        "ports": "80/http",
-                        "uptimeSeconds": 0,
-                        "vcpuCount": 21,
-                        "volumeInGb": 200,
-                        "volumeMountPath": "/workspace",
-                        "machine": {"gpuDisplayName": "RTX 3090"},
-                    }
-                }
-            }
-
-            pods = ctl_commands.get_pod("POD_ID")
-
-            self.assertEqual(pods["id"], "POD_ID")
-
-    def test_create_template(self):
-        """
-        Tests create_template
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request, patch(
-            "runpod.api.ctl_commands.get_gpu"
-        ) as patch_get_gpu:
-            patch_request.return_value.json.return_value = {
-                "data": {"saveTemplate": {"id": "TEMPLATE_ID"}}
-            }
-
-            patch_get_gpu.return_value = None
-
-            template = ctl_commands.create_template(
-                name="TEMPLATE_NAME", image_name="IMAGE_NAME"
-            )
-
-            self.assertEqual(template["id"], "TEMPLATE_ID")
-
-    def test_get_endpoints(self):
-        """
-        Tests get_endpoints
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request:
-            patch_request.return_value.json.return_value = {
-                "data": {
-                    "myself": {
-                        "endpoints": [
-                            {
-                                "id": "ENDPOINT_ID",
-                                "name": "ENDPOINT_NAME",
-                                "template": {
-                                    "id": "TEMPLATE_ID",
-                                    "imageName": "IMAGE_NAME",
-                                },
-                            }
-                        ]
-                    }
-                }
-            }
-
-            endpoints = ctl_commands.get_endpoints()
-
-            self.assertEqual(len(endpoints), 1)
-            self.assertEqual(endpoints[0]["id"], "ENDPOINT_ID")
-
-    def test_create_endpoint(self):
-        """
-        Tests create_endpoint
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request, patch(
-            "runpod.api.ctl_commands.get_gpu"
-        ) as patch_get_gpu:
-            patch_request.return_value.json.return_value = {
-                "data": {"saveEndpoint": {"id": "ENDPOINT_ID"}}
-            }
-
-            patch_get_gpu.return_value = None
-
-            endpoint = ctl_commands.create_endpoint(
-                name="ENDPOINT_NAME", template_id="TEMPLATE_ID"
-            )
-
-            self.assertEqual(endpoint["id"], "ENDPOINT_ID")
-
-    def test_update_endpoint_template(self):
-        """
-        Tests update_endpoint_template
-        """
-        with patch("runpod.api.graphql.requests.post") as patch_request, patch(
-            "runpod.api.ctl_commands.get_gpu"
-        ) as patch_get_gpu:
-            patch_request.return_value.json.return_value = {
-                "data": {"updateEndpointTemplate": {"id": "ENDPOINT_ID"}}
-            }
-
-            patch_get_gpu.return_value = None
-
-            endpoint = ctl_commands.update_endpoint_template(
-                endpoint_id="ENDPOINT_ID", template_id="TEMPLATE_ID"
-            )
-
-            self.assertEqual(endpoint["id"], "ENDPOINT_ID")
-
-    @patch("runpod.api.ctl_commands.run_graphql_query")
-    def test_create_container_registry_auth(self, mock_run_graphql_query):
-        """
-        Tests create_container_registry_auth by mocking the run_graphql_query function
-        """
-        # Set up the mock to return a predefined response
-        mock_run_graphql_query.return_value = {
-            "data": {
-                "saveRegistryAuth": {"id": "REGISTRY_AUTH_ID", "name": "REGISTRY_NAME"}
-            }
-        }
-
-        # Call the function under test with dummy arguments
-        result = ctl_commands.create_container_registry_auth(
-            name="REGISTRY_NAME", username="username", password="password"
+def test_update_user_settings_replaces_ssh_keys():
+    with (
+        patch("runpod.api.ctl_commands.run_rest_request") as request,
+        patch(
+            "runpod.api.ctl_commands.get_user",
+            return_value={"id": "user", "pubKey": "ssh-ed25519 key user"},
+        ) as get_user,
+    ):
+        result = ctl_commands.update_user_settings(
+            "\nssh-ed25519 key user\n\n", api_key="key"
         )
 
-        # Assertions to verify the function behavior
-        self.assertEqual(result["id"], "REGISTRY_AUTH_ID")
-        self.assertEqual(result["name"], "REGISTRY_NAME")
+    assert result == {"id": "user", "pubKey": "ssh-ed25519 key user"}
+    request.assert_called_once_with(
+        "PUT",
+        "/v2/account/ssh-keys",
+        api_key="key",
+        json={"keys": ["ssh-ed25519 key user"]},
+    )
+    get_user.assert_called_once_with(api_key="key")
 
-        # Verify that run_graphql_query was called with the correct parameters
-        mock_run_graphql_query.assert_called_once()  # Ensure it was called exactly once
 
-        # Access the first (and only) call's arguments directly
-        called_args, _ = mock_run_graphql_query.call_args
+def test_get_gpus_unwraps_response():
+    gpus = [{"id": "NVIDIA A100", "name": "A100", "memory": 80}]
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"gpus": gpus}
+    ) as request:
+        assert ctl_commands.get_gpus(api_key="key") == gpus
 
-        # The GraphQL query is expected to be the first positional argument in the call
-        graphql_query = called_args[0]
+    request.assert_called_once_with("GET", "/v2/catalog/gpus", api_key="key")
 
-        self.assertIn("mutation SaveRegistryAuth", graphql_query)
-        self.assertIn("REGISTRY_NAME", graphql_query)
-        self.assertIn("username", graphql_query)
-        self.assertIn("password", graphql_query)
+
+def test_get_gpu_requests_pod_availability():
+    gpu = {"id": "NVIDIA A100"}
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value=gpu
+    ) as request:
+        assert ctl_commands.get_gpu("NVIDIA A100", 2, api_key="key") == gpu
+
+    request.assert_called_once_with(
+        "GET",
+        "/v2/catalog/gpus/NVIDIA%20A100",
+        api_key="key",
+        params={"include": "AVAILABILITY", "product": "POD", "count": 2},
+    )
+
+
+def test_get_gpu_converts_not_found_to_value_error():
+    with (
+        patch(
+            "runpod.api.ctl_commands.run_rest_request",
+            side_effect=QueryError("not found", status_code=404),
+        ),
+        pytest.raises(ValueError, match="No GPU found"),
+    ):
+        ctl_commands.get_gpu("missing")
+
+
+def test_get_gpu_propagates_other_api_errors():
+    with (
+        patch(
+            "runpod.api.ctl_commands.run_rest_request",
+            side_effect=QueryError("forbidden", status_code=403),
+        ),
+        pytest.raises(QueryError, match="forbidden"),
+    ):
+        ctl_commands.get_gpu("NVIDIA A100")
+
+
+def test_get_pods_unwraps_response():
+    pods = [{"id": "pod"}]
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"pods": pods}
+    ) as request:
+        assert ctl_commands.get_pods(api_key="key") == pods
+
+    request.assert_called_once_with("GET", "/v2/pods", api_key="key")
+
+
+def test_get_pod_escapes_id():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "pod/id"}
+    ) as request:
+        assert ctl_commands.get_pod("pod/id", api_key="key") == {"id": "pod/id"}
+
+    request.assert_called_once_with("GET", "/v2/pods/pod%2Fid", api_key="key")
+
+
+def test_get_pod_returns_none_when_not_found():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request",
+        side_effect=QueryError("not found", status_code=404),
+    ):
+        assert ctl_commands.get_pod("missing") is None
+
+
+def test_get_pod_propagates_other_api_errors():
+    with (
+        patch(
+            "runpod.api.ctl_commands.run_rest_request",
+            side_effect=QueryError("forbidden", status_code=403),
+        ),
+        pytest.raises(QueryError, match="forbidden"),
+    ):
+        ctl_commands.get_pod("pod")
+
+
+def test_create_gpu_pod_translates_request():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "pod"}
+    ) as request:
+        result = ctl_commands.create_pod(
+            name="training",
+            image_name="runpod/pytorch:latest",
+            gpu_type_id="NVIDIA A100",
+            cloud_type="COMMUNITY",
+            start_ssh=True,
+            data_center_id="US-KS-2",
+            gpu_count=2,
+            volume_in_gb=20,
+            container_disk_in_gb=50,
+            docker_args="python main.py",
+            ports="8888/http, 22/tcp",
+            volume_mount_path="/workspace",
+            env={"COUNT": 2},
+            allowed_cuda_versions=["12.8", "12.6"],
+        )
+
+    assert result == {"id": "pod"}
+    request.assert_called_once_with(
+        "POST",
+        "/v2/pods",
+        json={
+            "name": "training",
+            "image": "runpod/pytorch:latest",
+            "args": "python main.py",
+            "startSsh": True,
+            "cloud": "COMMUNITY",
+            "dataCenterIds": ["US-KS-2"],
+            "disk": 50,
+            "ports": ["8888/http", "22/tcp"],
+            "env": {"COUNT": "2"},
+            "mounts": {
+                "persistent": {"size": 20, "path": "/workspace"}
+            },
+            "gpu": {
+                "id": "NVIDIA A100",
+                "count": 2,
+                "allowedCudaVersions": ["12.8", "12.6"],
+            },
+        },
+    )
+
+
+def test_create_gpu_pod_with_network_volume_and_template():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "pod"}
+    ) as request:
+        ctl_commands.create_pod(
+            name="training",
+            template_id="template",
+            gpu_type_id="NVIDIA A100",
+            network_volume_id="volume",
+        )
+
+    body = request.call_args.kwargs["json"]
+    assert body["templateId"] == "template"
+    assert body["mounts"] == {
+        "network": [{"volumeId": "volume", "path": "/runpod-volume"}]
+    }
+    assert "image" not in body
+    assert "disk" not in body
+    assert "cloud" not in body
+
+
+def test_create_cpu_pod_translates_instance_id():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "pod"}
+    ) as request:
+        ctl_commands.create_pod(
+            "cpu-pod", "python:3.11", instance_id="cpu3c-4-8"
+        )
+
+    assert request.call_args.kwargs["json"]["cpu"] == {
+        "id": "cpu3c",
+        "vcpuCount": 4,
+    }
+
+
+def test_create_cpu_pod_requires_instance_id():
+    with pytest.raises(ValueError, match="instance_id"):
+        ctl_commands.create_pod("cpu-pod", "python:3.11")
+
+
+def test_create_cpu_pod_validates_instance_id():
+    with pytest.raises(ValueError, match="format"):
+        ctl_commands.create_pod(
+            "cpu-pod", "python:3.11", instance_id="cpu3c-invalid"
+        )
+
+
+def test_create_pod_validates_image_and_cloud():
+    with pytest.raises(ValueError, match="Either image_name or template_id"):
+        ctl_commands.create_pod("pod", gpu_type_id="NVIDIA A100")
+
+    with pytest.raises(ValueError, match="cloud_type"):
+        ctl_commands.create_pod(
+            "pod", "image", gpu_type_id="NVIDIA A100", cloud_type="INVALID"
+        )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "field"),
+    [
+        ({"support_public_ip": False}, "support_public_ip"),
+        ({"country_code": "US"}, "country_code"),
+        ({"min_vcpu_count": 8}, "min_vcpu_count"),
+        ({"min_memory_in_gb": 32}, "min_memory_in_gb"),
+        ({"min_download": 100}, "min_download"),
+        ({"min_upload": 100}, "min_upload"),
+    ],
+)
+def test_create_gpu_pod_rejects_unsupported_constraints(kwargs, field):
+    with pytest.raises(ValueError, match=field):
+        ctl_commands.create_pod(
+            "pod", "image", gpu_type_id="NVIDIA A100", **kwargs
+        )
+
+
+def test_stop_and_resume_pod_use_actions():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "pod"}
+    ) as request:
+        assert ctl_commands.stop_pod("pod") == {"id": "pod"}
+        assert ctl_commands.resume_pod("pod", 8) == {"id": "pod"}
+
+    assert request.call_args_list[0].args == (
+        "POST",
+        "/v2/pods/pod/action",
+    )
+    assert request.call_args_list[0].kwargs == {"json": {"action": "stop"}}
+    assert request.call_args_list[1].kwargs == {"json": {"action": "start"}}
+
+
+def test_terminate_pod_deletes_resource():
+    with patch("runpod.api.ctl_commands.run_rest_request", return_value=None) as request:
+        assert ctl_commands.terminate_pod("pod/id") is None
+
+    request.assert_called_once_with("DELETE", "/v2/pods/pod%2Fid")
+
+
+def test_create_template_translates_request():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "template"}
+    ) as request:
+        result = ctl_commands.create_template(
+            name="template",
+            image_name="image",
+            docker_start_cmd="python main.py",
+            container_disk_in_gb=20,
+            volume_in_gb=50,
+            ports="8888/http,22/tcp",
+            env={"PORT": 8888},
+            is_serverless=True,
+            registry_auth_id="registry",
+        )
+
+    assert result == {"id": "template"}
+    request.assert_called_once_with(
+        "POST",
+        "/v2/templates",
+        json={
+            "name": "template",
+            "image": "image",
+            "args": "python main.py",
+            "disk": 20,
+            "mounts": {
+                "persistent": {"size": 50, "path": "/workspace"}
+            },
+            "ports": ["8888/http", "22/tcp"],
+            "env": {"PORT": "8888"},
+            "serverless": True,
+            "registry": "registry",
+        },
+    )
+
+
+def test_get_endpoints_unwraps_response():
+    endpoints = [{"id": "endpoint"}]
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request",
+        return_value={"endpoints": endpoints},
+    ) as request:
+        assert ctl_commands.get_endpoints() == endpoints
+
+    request.assert_called_once_with("GET", "/v2/serverless")
+
+
+def test_create_endpoint_translates_queue_scaling():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "endpoint"}
+    ) as request:
+        result = ctl_commands.create_endpoint(
+            name="endpoint",
+            template_id="template",
+            gpu_ids="AMPERE_16,ADA_24",
+            network_volume_id="volume",
+            locations="US-KS-2, EU-RO-1",
+            idle_timeout=10,
+            scaler_value=8,
+            workers_min=1,
+            workers_max=5,
+            flashboot=True,
+            allowed_cuda_versions="12.8,12.6",
+            gpu_count=2,
+        )
+
+    assert result == {"id": "endpoint"}
+    request.assert_called_once_with(
+        "POST",
+        "/v2/serverless",
+        json={
+            "name": "endpoint",
+            "templateId": "template",
+            "type": "QUEUE",
+            "gpu": {
+                "pools": ["AMPERE_16", "ADA_24"],
+                "count": 2,
+                "allowedCudaVersions": ["12.8", "12.6"],
+            },
+            "networkVolumes": ["volume"],
+            "dataCenterIds": ["US-KS-2", "EU-RO-1"],
+            "workers": {"min": 1, "max": 5, "idleTimeout": 10},
+            "scaling": {"type": "QUEUE_DELAY", "queueDelay": 8},
+            "flashboot": "FLASHBOOT",
+        },
+    )
+
+
+def test_create_endpoint_translates_worker_count_scaling():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "endpoint"}
+    ) as request:
+        ctl_commands.create_endpoint(
+            "endpoint", "template", scaler_type="WORKER_COUNT", scaler_value=2
+        )
+
+    body = request.call_args.kwargs["json"]
+    assert body["scaling"] == {"type": "REQUEST_COUNT", "requestCount": 2}
+    assert body["workers"] == {"min": 0, "max": 3}
+
+
+def test_create_endpoint_rejects_invalid_scaler():
+    with pytest.raises(ValueError, match="scaler_type"):
+        ctl_commands.create_endpoint(
+            "endpoint", "template", scaler_type="INVALID"
+        )
+
+
+def test_update_endpoint_template_uses_patch():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "endpoint"}
+    ) as request:
+        assert ctl_commands.update_endpoint_template("endpoint/id", "template") == {
+            "id": "endpoint"
+        }
+
+    request.assert_called_once_with(
+        "PATCH",
+        "/v2/serverless/endpoint%2Fid",
+        json={"templateId": "template"},
+    )
+
+
+def test_create_container_registry_auth_uses_rest():
+    with patch(
+        "runpod.api.ctl_commands.run_rest_request", return_value={"id": "registry"}
+    ) as request:
+        result = ctl_commands.create_container_registry_auth(
+            "registry", "user", "password"
+        )
+
+    assert result == {"id": "registry"}
+    request.assert_called_once_with(
+        "POST",
+        "/v2/registries",
+        json={"name": "registry", "username": "user", "password": "password"},
+    )
+
+
+def test_update_container_registry_auth_uses_graphql():
+    with patch(
+        "runpod.api.ctl_commands.run_graphql_query",
+        return_value={"data": {"updateRegistryAuth": {"id": "registry"}}},
+    ) as request:
+        result = ctl_commands.update_container_registry_auth(
+            "registry", "user", "password"
+        )
+
+    assert result == {"id": "registry"}
+    mutation = request.call_args.args[0]
+    assert "mutation UpdateRegistryAuth" in mutation
+    assert 'id: "registry"' in mutation
+
+
+def test_delete_container_registry_auth_uses_rest():
+    with patch("runpod.api.ctl_commands.run_rest_request", return_value=None) as request:
+        assert ctl_commands.delete_container_registry_auth("registry/id") is True
+
+    request.assert_called_once_with("DELETE", "/v2/registries/registry%2Fid")

@@ -22,7 +22,7 @@ Welcome to the official Python library for Runpod API &amp; SDK.
 - [⚡ | Serverless Worker (SDK)](#--serverless-worker-sdk)
   - [Quick Start](#quick-start)
   - [Local Test Worker](#local-test-worker)
-- [📚 | API Language Library (GraphQL Wrapper)](#--api-language-library-graphql-wrapper)
+- [📚 | REST API v2 Wrapper](#--rest-api-v2-wrapper)
   - [Endpoints](#endpoints)
   - [GPU Cloud (Pods)](#gpu-cloud-pods)
 - [📁 | Directory](#--directory)
@@ -162,9 +162,9 @@ with VolumeCache(dirs=["/root/.cache/huggingface"]):
 
 See [Network-Volume Warm Cache](https://github.com/runpod/runpod-python/blob/main/docs/serverless/volume_cache.md) documentation for configuration and details.
 
-## 📚 | API Language Library (GraphQL Wrapper)
+## 📚 | REST API v2 Wrapper
 
-When interacting with the Runpod API you can use this library to make requests to the API.
+Use the API wrapper to manage Runpod resources through REST API v2.
 
 ```python
 import runpod
@@ -281,26 +281,26 @@ import runpod
 
 runpod.api_key = "your_runpod_api_key_found_under_settings"
 
-# Get all my pods
+# get all my pods
 pods = runpod.get_pods()
 
-# Get a specific pod
-pod = runpod.get_pod(pod.id)
+# get a specific pod
+pod = runpod.get_pod(pods[0]["id"])
 
-# Create a pod with GPU
-pod = runpod.create_pod("test", "runpod/stack", "NVIDIA GeForce RTX 3070")
+# create a pod with a gpu
+pod = runpod.create_pod("test", "runpod/stack", "NVIDIA GeForce RTX 4090")
 
-# Create a pod with CPU
+# create a pod with a cpu
 pod = runpod.create_pod("test", "runpod/stack", instance_id="cpu3c-2-4")
 
-# Stop the pod
-runpod.stop_pod(pod.id)
+# stop the pod
+runpod.stop_pod(pod["id"])
 
-# Resume the pod
-runpod.resume_pod(pod.id)
+# resume the pod
+runpod.resume_pod(pod["id"], 1)
 
-# Terminate the pod
-runpod.terminate_pod(pod.id)
+# terminate the pod
+runpod.terminate_pod(pod["id"])
 ```
 
 ## 📁 | Directory
@@ -310,7 +310,7 @@ runpod.terminate_pod(pod.id)
 ├── docs               # Documentation
 ├── examples           # Examples
 ├── runpod             # Package source code
-│   ├── api_wrapper    # Language library - API (GraphQL)
+│   ├── api            # rest api v2 wrapper
 │   ├── cli            # Command Line Interface Functions
 │   ├── endpoint       # Language library - Endpoints
 │   └── serverless     # SDK - Serverless Worker
